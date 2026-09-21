@@ -59,10 +59,11 @@ function AuthPage() {
   async function signInWithGoogle() {
     setGoogleLoading(true);
     try {
+      const appUrl = (import.meta.env.VITE_SITE_URL || window.location.origin).replace(/\/$/, "");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${appUrl}/dashboard`,
         },
       });
       if (error) {
