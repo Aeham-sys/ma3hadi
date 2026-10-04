@@ -74,7 +74,7 @@ export function useTeachers() {
       const { data, error } = await supabase
         .from("teachers")
         .select(
-          "*, courses:course_id(id,name), teacher_courses(id, course_id, courses(id,name)), teacher_payments(id,amount)",
+          "*, courses:course_id(id,name), teacher_courses(id, course_id, courses(id,name)), teacher_payments(id,amount,status)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;

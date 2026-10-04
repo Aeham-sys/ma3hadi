@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCourses, useRefresh } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
 import { money, shortDate } from "@/lib/format";
+import { isActivePayment } from "@/lib/fees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +19,16 @@ import {
 } from "@/components/ui/dialog";
 import { FabButton } from "@/components/FabButton";
 import { CourseMultiSelect, teacherCourseNames } from "@/components/CourseMultiSelect";
-import { ChevronLeft, Wallet, Pencil, Trash2, TriangleAlert } from "lucide-react";
+import { ChevronLeft, Wallet, Pencil, Trash2, TriangleAlert, Ban, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+
+type TeacherPaymentRow = {
+  id: string;
+  amount: number;
+  date: string;
+  note: string | null;
+  status: string | null;
+};
 
 export const Route = createFileRoute("/_authenticated/teachers/$id")({
   head: ({ params }) => {
@@ -53,7 +62,7 @@ function TeacherDetail() {
       const { data, error } = await supabase
         .from("teachers")
         .select(
-          "*, courses:course_id(id,name), teacher_courses(id, course_id, courses(id,name)), teacher_payments(id,amount,date,note)",
+          "*, courses:course_id(id,name), teacher_courses(id, course_id, courses(id,name)), teacher_payments(id,amount,date,note,status)",
         )
         .eq("id", id)
         .single();
@@ -64,6 +73,7 @@ function TeacherDetail() {
 
   const [payOpen, setPayOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<TeacherPaymentRow | null>(null);
   const [pay, setPay] = useState({ amount: "", date: "", note: "" });
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -73,13 +83,42 @@ function TeacherDetail() {
     return <p className="text-sm text-muted-foreground">{t("جاري التحميل…", "Loading…")}</p>;
   }
 
-  const payments = ((teacher.teacher_payments ?? []) as {
-    id: string;
-    amount: number;
-    date: string;
-    note: string | null;
-  }[]).sort((a, b) => b.date.localeCompare(a.date));
-  const total = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const payments = ((teacher.teacher_payments ?? []) as TeacherPaymentRow[]).sort((a, b) =>
+    b.date.localeCompare(a.date),
+  );
+  const total = payments.filter(isActivePayment).reduce((s, p) => s + Number(p.amount), 0);
+
+  const savePaymentEdit = async (
+    row: TeacherPaymentRow,
+    patch: { amount: number; date: string; note: string | null; status: string },
+  ) => {
+    const { data, error } = await supabase
+      .from("teacher_payments")
+      .update({
+        amount: patch.amount,
+        date: patch.date,
+        note: patch.note,
+        status: patch.status,
+      })
+      .eq("id", row.id)
+      .select("id");
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    if (!data?.length) {
+      toast.error(t("تعذّر تعديل الدفعة", "Could not update the payment"));
+      return false;
+    }
+    await refetch();
+    refresh("teachers", "recent-feed");
+    toast.success(
+      patch.status === "cancelled"
+        ? t("تم إلغاء الدفعة", "Payment cancelled")
+        : t("تم تحديث الدفعة", "Payment updated"),
+    );
+    return true;
+  };
 
   const savePayment = async () => {
     const amount = Number(pay.amount);
@@ -170,15 +209,43 @@ function TeacherDetail() {
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
-            {payments.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="num text-sm font-bold text-foreground">{money(p.amount)}</p>
-                  {p.note && <p className="truncate text-[11px] text-muted-foreground">{p.note}</p>}
-                </div>
-                <span className="num shrink-0 text-xs text-muted-foreground">{shortDate(p.date)}</span>
-              </li>
-            ))}
+            {payments.map((p) => {
+              const cancelled = !isActivePayment(p);
+              return (
+                <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p
+                      className={`num text-sm font-bold ${
+                        cancelled ? "text-muted-foreground line-through" : "text-foreground"
+                      }`}
+                    >
+                      {money(p.amount)}
+                    </p>
+                    <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {p.note && (
+                        <span className="break-words [overflow-wrap:anywhere]">{p.note}</span>
+                      )}
+                      {cancelled && (
+                        <span className="flex items-center gap-1 rounded-lg bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                          <Ban className="size-3" />
+                          {t("ملغاة", "Cancelled")}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="num text-xs text-muted-foreground">{shortDate(p.date)}</span>
+                    <button
+                      onClick={() => setEditingPayment(p)}
+                      aria-label={t("تعديل الدفعة", "Edit payment")}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -232,6 +299,12 @@ function TeacherDetail() {
         </DialogContent>
       </Dialog>
 
+      <TeacherPaymentEditDialog
+        payment={editingPayment}
+        onClose={() => setEditingPayment(null)}
+        onSave={savePaymentEdit}
+      />
+
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="rounded-xl">
           <DialogHeader>
@@ -276,6 +349,135 @@ function TeacherDetail() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TeacherPaymentEditDialog({
+  payment,
+  onClose,
+  onSave,
+}: {
+  payment: TeacherPaymentRow | null;
+  onClose: () => void;
+  onSave: (
+    row: TeacherPaymentRow,
+    patch: { amount: number; date: string; note: string | null; status: string },
+  ) => Promise<boolean>;
+}) {
+  const { t } = usePrefs();
+  const [form, setForm] = useState({ amount: "", date: "", note: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!payment) return;
+    setForm({
+      amount: String(payment.amount),
+      date: payment.date,
+      note: payment.note ?? "",
+    });
+  }, [payment]);
+
+  if (!payment) return null;
+  const cancelled = !isActivePayment(payment);
+
+  const submit = async (status: string) => {
+    const amount = Number(form.amount);
+    if (!(amount > 0)) {
+      toast.error(t("أدخل مبلغ صحيح", "Enter a valid amount"));
+      return;
+    }
+    if (!form.date) {
+      toast.error(t("أدخل التاريخ", "Enter a date"));
+      return;
+    }
+    setSaving(true);
+    const ok = await onSave(payment, {
+      amount,
+      date: form.date,
+      note: form.note || null,
+      status,
+    });
+    setSaving(false);
+    if (ok) onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>{t("تعديل الدفعة", "Edit payment")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3.5">
+          {cancelled && (
+            <p className="flex items-center gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+              <Ban className="size-4" />
+              {t(
+                "هالدفعة ملغاة وما بتنحسب بإجمالي المدفوع.",
+                "This payment is cancelled and excluded from the paid total.",
+              )}
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <Label>{t("المبلغ", "Amount")}</Label>
+            <Input
+              dir="ltr"
+              type="number"
+              inputMode="numeric"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t("التاريخ", "Date")}</Label>
+            <Input
+              dir="ltr"
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t("ملاحظة", "Note")}</Label>
+            <Textarea
+              rows={2}
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+          </div>
+        </div>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <Button
+            onClick={() => submit(cancelled ? "cancelled" : "active")}
+            disabled={saving}
+            size="lg"
+            className="w-full"
+          >
+            {saving ? t("لحظة…", "Saving…") : t("حفظ التعديلات", "Save changes")}
+          </Button>
+          {cancelled ? (
+            <Button
+              variant="outline"
+              onClick={() => submit("active")}
+              disabled={saving}
+              className="w-full"
+            >
+              <RotateCcw className="size-4" />
+              {t("استعادة الدفعة", "Restore payment")}
+            </Button>
+          ) : (
+            <Button
+              variant="destructive"
+              onClick={() => submit("cancelled")}
+              disabled={saving}
+              className="w-full"
+            >
+              <Ban className="size-4" />
+              {t("إلغاء الدفعة (بدون حذف)", "Cancel payment (keep record)")}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

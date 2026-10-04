@@ -58,6 +58,7 @@ function Dashboard() {
         supabase
           .from("teacher_payments")
           .select("id, amount, date, teachers(name)")
+          .eq("status", "active")
           .order("created_at", { ascending: false })
           .limit(5),
       ]);

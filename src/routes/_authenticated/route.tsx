@@ -23,6 +23,7 @@ import {
   LogOut,
   Lock,
   Download,
+  PiggyBank,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +50,7 @@ const NAV = [
   { to: "/dashboard", ar: "الداشبورد", en: "Dashboard", icon: LayoutDashboard },
   { to: "/students", ar: "الطلاب", en: "Students", icon: Users },
   { to: "/teachers", ar: "المدرسين", en: "Teachers", icon: GraduationCap },
+  { to: "/budget", ar: "الميزانية", en: "Budget", icon: PiggyBank },
   { to: "/courses", ar: "المواد", en: "Courses", icon: BookOpen },
   { to: "/schedule", ar: "برنامج الدوام", en: "Schedule", icon: CalendarDays },
 ] as const;

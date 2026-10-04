@@ -89,6 +89,53 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          amount: number
+          cancelled_at: string | null
+          category: string
+          created_at: string
+          date: string
+          id: string
+          institute_id: string
+          note: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          cancelled_at?: string | null
+          category: string
+          created_at?: string
+          date?: string
+          id?: string
+          institute_id: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          cancelled_at?: string | null
+          category?: string
+          created_at?: string
+          date?: string
+          id?: string
+          institute_id?: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       institutes: {
         Row: {
           created_at: string
@@ -419,27 +466,36 @@ export type Database = {
       teacher_payments: {
         Row: {
           amount: number
+          cancelled_at: string | null
           created_at: string
           date: string
           id: string
           note: string | null
+          status: string
           teacher_id: string
+          updated_at: string
         }
         Insert: {
           amount: number
+          cancelled_at?: string | null
           created_at?: string
           date?: string
           id?: string
           note?: string | null
+          status?: string
           teacher_id: string
+          updated_at?: string
         }
         Update: {
           amount?: number
+          cancelled_at?: string | null
           created_at?: string
           date?: string
           id?: string
           note?: string | null
+          status?: string
           teacher_id?: string
+          updated_at?: string
         }
         Relationships: [
           {

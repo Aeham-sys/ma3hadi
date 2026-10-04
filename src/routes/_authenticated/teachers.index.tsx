@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCourses, useInstitute, useRefresh, useTeachers } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
 import { money } from "@/lib/format";
+import { isActivePayment } from "@/lib/fees";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FabButton } from "@/components/FabButton";
 import { Button } from "@/components/ui/button";
@@ -114,10 +115,11 @@ function TeachersPage() {
       ) : (
         <ul className="space-y-3">
           {list.map((x) => {
-            const paid = ((x.teacher_payments ?? []) as { amount: number }[]).reduce(
-              (s, p) => s + Number(p.amount),
-              0,
-            );
+            const paid = (
+              (x.teacher_payments ?? []) as { amount: number; status?: string | null }[]
+            )
+              .filter(isActivePayment)
+              .reduce((s, p) => s + Number(p.amount), 0);
             return (
               <li key={x.id as string}>
                 <Link
