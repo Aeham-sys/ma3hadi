@@ -3,7 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCourses, useInstitute, useSections, useStudents, studentBalance } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
-import { money, hhmm, shortDate, DAYS_AR, DAYS_EN, METHOD_LABELS } from "@/lib/format";
+import {
+  money,
+  hhmm,
+  shortDate,
+  DAYS_AR,
+  DAYS_EN,
+  METHOD_LABELS,
+  localDateString,
+} from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
@@ -69,20 +77,21 @@ function Dashboard() {
   const now = new Date();
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const currentMonthStartStr = localDateString(currentMonthStart);
+  const previousMonthStartStr = localDateString(previousMonthStart);
 
   const { data: monthly = { current: 0, previous: 0 } } = useQuery({
-    queryKey: ["monthly-collections", currentMonthStart.toISOString().slice(0, 10)],
+    queryKey: ["monthly-collections", currentMonthStartStr],
     queryFn: async () => {
       const { data } = await supabase
         .from("payments")
         .select("amount,date")
         .eq("status", "active")
-        .gte("date", previousMonthStart.toISOString().slice(0, 10));
-      const currentStart = currentMonthStart.getTime();
+        .gte("date", previousMonthStartStr);
       return (data ?? []).reduce(
         (totals, payment) => {
           const amount = Number(payment.amount);
-          if (new Date(payment.date).getTime() >= currentStart) totals.current += amount;
+          if (payment.date >= currentMonthStartStr) totals.current += amount;
           else totals.previous += amount;
           return totals;
         },

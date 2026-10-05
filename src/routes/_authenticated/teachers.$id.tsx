@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCourses, useRefresh } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
-import { money, shortDate } from "@/lib/format";
+import { money, shortDate, localDateString } from "@/lib/format";
 import { isActivePayment } from "@/lib/fees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,12 +122,15 @@ function TeacherDetail() {
 
   const savePayment = async () => {
     const amount = Number(pay.amount);
-    if (!amount) { toast.error(t("أدخل المبلغ", "Enter an amount")); return; }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error(t("أدخل مبلغ صحيح", "Enter a valid amount"));
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("teacher_payments").insert({
       teacher_id: id,
       amount,
-      date: pay.date || new Date().toISOString().slice(0, 10),
+      date: pay.date || localDateString(),
       note: pay.note || null,
     });
     setSaving(false);

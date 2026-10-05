@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { studentBalance, useCourses, useInstitute, useRefresh, useStudents, useTeachers } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
-import { money } from "@/lib/format";
+import { money, localDateString } from "@/lib/format";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FabButton } from "@/components/FabButton";
 import { Button } from "@/components/ui/button";
@@ -164,7 +164,7 @@ function StudentsPage() {
       stage: form.stage || null,
       grade: form.grade || null,
       branch: form.stage === "secondary" ? form.branch || null : null,
-      enrollment_date: form.enrollment_date || new Date().toISOString().slice(0, 10),
+      enrollment_date: form.enrollment_date || localDateString(),
     }).select("id").single();
     if (error || !inserted) { setSaving(false); toast.error(error?.message ?? "Error"); return; }
     if (pickedCourses.length > 0) {

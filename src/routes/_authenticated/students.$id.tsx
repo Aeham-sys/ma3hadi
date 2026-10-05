@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCourses, useRefresh, useInstitute } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
-import { money, shortDate, METHOD_LABELS } from "@/lib/format";
+import { money, shortDate, METHOD_LABELS, localDateString } from "@/lib/format";
 import { buildReminderMessage, waLink } from "@/lib/reminder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,7 +144,7 @@ function StudentDetail() {
     const { error } = await supabase.from("payments").insert({
       student_id: id,
       amount,
-      date: pay.date || new Date().toISOString().slice(0, 10),
+      date: pay.date || localDateString(),
       method: pay.method as "cash" | "shamcash" | "transfer",
       note: pay.note || null,
     });
