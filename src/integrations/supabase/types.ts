@@ -592,6 +592,15 @@ export type Database = {
           subscription_end: string
         }[]
       }
+      budget_year_totals: {
+        Args: { p_year: number }
+        Returns: {
+          expenses: number
+          income: number
+          month: string
+          wages: number
+        }[]
+      }
       get_payment_settings: {
         Args: never
         Returns: {
