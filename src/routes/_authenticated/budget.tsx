@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { studentBalance, useInstitute, useRefresh } from "@/hooks/useApp";
 import type { Institute } from "@/lib/subscription";
 import { usePrefs } from "@/lib/i18n";
 import { money, METHOD_LABELS, shortDate } from "@/lib/format";
+import type { MonthlyReport } from "@/lib/monthlyReport";
 import { isActivePayment } from "@/lib/fees";
 import {
   EXPENSE_CATEGORIES,
@@ -18,7 +19,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FabButton } from "@/components/FabButton";
-import { Ban, ChevronLeft, ChevronRight, Pencil, PiggyBank, RotateCcw, Wallet } from "lucide-react";
+import {
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  FileSpreadsheet,
+  Pencil,
+  PiggyBank,
+  Printer,
+  RotateCcw,
+  Wallet,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +38,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+
+const MonthlyReportPrint = lazy(() =>
+  import("@/components/MonthlyReportPrint").then((module) => ({
+    default: module.MonthlyReportPrint,
+  })),
+);
 
 type ExpenseRow = {
   id: string;
@@ -489,6 +506,18 @@ function BudgetMonthView({
   onCreateExpense: () => void;
 }) {
   const { t, lang } = usePrefs();
+  const { data: institute } = useInstitute();
+  const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
+  const [printReport, setPrintReport] = useState<MonthlyReport | null>(null);
+  const printCleanupRef = useRef<(() => void) | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      printCleanupRef.current?.();
+    };
+  }, []);
   const startDate = monthDate(year, month);
   const endDate = nextMonthDate(year, month);
   const startInstant = new Date(year, month, 1).toISOString();
@@ -590,6 +619,80 @@ function BudgetMonthView({
   const monthTitle = new Date(year, month, 1).toLocaleDateString(lang === "ar" ? "ar" : "en", {
     month: "long",
   });
+  const monthLabel = `${monthTitle} ${year}`;
+  const instituteName = institute?.name ?? "";
+
+  const handleExcelExport = async () => {
+    printCleanupRef.current?.();
+    setExporting("excel");
+    try {
+      const [{ fetchMonthlyReport }, { exportMonthlyExcel }] = await Promise.all([
+        import("@/lib/monthlyReport"),
+        import("@/lib/exportMonthlyExcel"),
+      ]);
+      const report = await fetchMonthlyReport(year, month);
+      await exportMonthlyExcel(report, { instituteName, lang, t, monthLabel });
+    } catch {
+      toast.error(
+        t("تعذّر تجهيز التقرير، جرّب كمان مرة", "Could not prepare the report, please try again"),
+      );
+    } finally {
+      if (mountedRef.current) setExporting(null);
+    }
+  };
+
+  const handlePdfExport = async () => {
+    printCleanupRef.current?.();
+    setExporting("pdf");
+    try {
+      const reportModule = await import("@/lib/monthlyReport");
+      await import("@/components/MonthlyReportPrint");
+      const report = await reportModule.fetchMonthlyReport(year, month);
+      setPrintReport(report);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (!mountedRef.current) return;
+
+      const originalTitle = document.title;
+      let cleanedUp = false;
+      const printMedia = window.matchMedia("print");
+      const fallbackTimer: { id?: ReturnType<typeof setTimeout> } = {};
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        window.removeEventListener("afterprint", onAfterPrint);
+        printMedia.removeEventListener("change", onPrintMediaChange);
+        clearTimeout(fallbackTimer.id);
+        document.title = originalTitle;
+        if (mountedRef.current) {
+          setPrintReport(null);
+          setExporting(null);
+        }
+        if (printCleanupRef.current === cleanup) printCleanupRef.current = null;
+      };
+      const onAfterPrint = () => cleanup();
+      const onPrintMediaChange = (event: MediaQueryListEvent) => {
+        if (!event.matches) cleanup();
+      };
+      printCleanupRef.current = cleanup;
+      window.addEventListener("afterprint", onAfterPrint, { once: true });
+      printMedia.addEventListener("change", onPrintMediaChange);
+      fallbackTimer.id = setTimeout(cleanup, 5 * 60 * 1000);
+      document.title = `ma3hadi-budget-${year}-${String(month + 1).padStart(2, "0")}`;
+      window.print();
+      if (mountedRef.current) setExporting(null);
+    } catch {
+      printCleanupRef.current?.();
+      if (mountedRef.current) {
+        setPrintReport(null);
+        setExporting(null);
+      }
+      toast.error(
+        t("تعذّر تجهيز التقرير، جرّب كمان مرة", "Could not prepare the report, please try again"),
+      );
+    }
+  };
   const categoryTotals = EXPENSE_CATEGORIES.map((category) => {
     const amount = activeExpenses
       .filter((expense) => expense.category === category.id)
@@ -623,16 +726,44 @@ function BudgetMonthView({
           <ChevronLeft className="size-4 icon-flip" />
           {t("كل الأشهر", "All months")}
         </Link>
-        <div>
-          <h1 className="text-xl font-extrabold text-foreground">
-            {monthTitle} {year}
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t(
-              "على أساس نقدي: يُحتسب ما تم قبضه وصرفه فعليًا خلال الشهر",
-              "Cash basis: only amounts actually collected/paid in the month",
-            )}
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-extrabold text-foreground">{monthLabel}</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t(
+                "على أساس نقدي: يُحتسب ما تم قبضه وصرفه فعليًا خلال الشهر",
+                "Cash basis: only amounts actually collected/paid in the month",
+              )}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 min-w-0 gap-2"
+              aria-label={t("تنزيل تقرير Excel", "Download Excel report")}
+              disabled={exporting !== null}
+              onClick={() => void handleExcelExport()}
+            >
+              <FileSpreadsheet className="size-4 shrink-0" />
+              <span className="truncate">
+                {exporting === "excel" ? t("جاري التجهيز…", "Preparing…") : t("Excel", "Excel")}
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 min-w-0 gap-2"
+              aria-label={t("طباعة التقرير أو حفظه PDF", "Print or save report as PDF")}
+              disabled={exporting !== null}
+              onClick={() => void handlePdfExport()}
+            >
+              <Printer className="size-4 shrink-0" />
+              <span className="truncate">
+                {exporting === "pdf" ? t("جاري التجهيز…", "Preparing…") : t("PDF", "PDF")}
+              </span>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -859,6 +990,17 @@ function BudgetMonthView({
           />
         </div>
       </section>
+      {printReport && (
+        <Suspense fallback={null}>
+          <MonthlyReportPrint
+            report={printReport}
+            instituteName={instituteName}
+            lang={lang}
+            t={t}
+            monthLabel={monthLabel}
+          />
+        </Suspense>
+      )}
     </section>
   );
 }
