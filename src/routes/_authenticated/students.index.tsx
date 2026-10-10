@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { studentBalance, useCourses, useInstitute, useRefresh, useStudents, useTeachers } from "@/hooks/useApp";
+import {
+  studentBalance,
+  useCourses,
+  useInstitute,
+  useRefresh,
+  useStudents,
+  useTeachers,
+} from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
 import { money, localDateString } from "@/lib/format";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -35,7 +42,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { STAGES, GRADES, BRANCHES, stageLabel, gradeLabel, branchLabel, courseMatchesStudent, classificationLabel, type StageId } from "@/lib/stages";
+import {
+  STAGES,
+  GRADES,
+  BRANCHES,
+  stageLabel,
+  gradeLabel,
+  branchLabel,
+  courseMatchesStudent,
+  classificationLabel,
+  type StageId,
+} from "@/lib/stages";
 import { courseTeachers, enrollmentFee } from "@/lib/fees";
 
 export const Route = createFileRoute("/_authenticated/students/")({
@@ -109,7 +126,10 @@ function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.stage, form.grade, form.branch]);
 
-  const toggleCoursePick = (course: { id: string; teacher_courses?: { teacher_id: string }[] | null }) =>
+  const toggleCoursePick = (course: {
+    id: string;
+    teacher_courses?: { teacher_id: string }[] | null;
+  }) =>
     setPickedCourses((prev) => {
       if (prev.some((p) => p.course_id === course.id)) {
         return prev.filter((p) => p.course_id !== course.id);
@@ -131,16 +151,32 @@ function StudentsPage() {
       ),
     );
 
-
   useEffect(() => {
     if (add) setOpen(true);
   }, [add]);
 
   const save = async (again: boolean) => {
-    if (!institute) { toast.error(t("ما قدرنا نجيب بيانات معهدك، حدّث الصفحة وجرّب كمان مرة", "Could not load your institute, refresh and try again")); return; }
-    if (!form.name.trim()) { toast.error(t("اسم الطالب مطلوب", "Student name is required")); return; }
-    if (form.stage && !form.grade) { toast.error(t("اختر الصف", "Pick a grade")); return; }
-    if (form.stage === "secondary" && !form.branch) { toast.error(t("اختر الفرع", "Pick a branch")); return; }
+    if (!institute) {
+      toast.error(
+        t(
+          "ما قدرنا نجيب بيانات معهدك، حدّث الصفحة وجرّب كمان مرة",
+          "Could not load your institute, refresh and try again",
+        ),
+      );
+      return;
+    }
+    if (!form.name.trim()) {
+      toast.error(t("اسم الطالب مطلوب", "Student name is required"));
+      return;
+    }
+    if (form.stage && !form.grade) {
+      toast.error(t("اختر الصف", "Pick a grade"));
+      return;
+    }
+    if (form.stage === "secondary" && !form.branch) {
+      toast.error(t("اختر الفرع", "Pick a branch"));
+      return;
+    }
     const missingTeacher = pickedCourses.find((p) => {
       const course = matchingCourses.find((c) => c.id === p.course_id);
       return !p.teacher_id && courseTeachers(course as never).length > 1;
@@ -153,20 +189,28 @@ function StudentsPage() {
       return;
     }
     setSaving(true);
-    const { data: inserted, error } = await supabase.from("students").insert({
-      institute_id: institute.id,
-      name: form.name.trim(),
-      surname: form.surname.trim() || null,
-      father_name: form.father_name || null,
-      mother_name: form.mother_name || null,
-      phone: form.phone || null,
-      guardian_phone: form.guardian_phone || null,
-      stage: form.stage || null,
-      grade: form.grade || null,
-      branch: form.stage === "secondary" ? form.branch || null : null,
-      enrollment_date: form.enrollment_date || localDateString(),
-    }).select("id").single();
-    if (error || !inserted) { setSaving(false); toast.error(error?.message ?? "Error"); return; }
+    const { data: inserted, error } = await supabase
+      .from("students")
+      .insert({
+        institute_id: institute.id,
+        name: form.name.trim(),
+        surname: form.surname.trim() || null,
+        father_name: form.father_name || null,
+        mother_name: form.mother_name || null,
+        phone: form.phone || null,
+        guardian_phone: form.guardian_phone || null,
+        stage: form.stage || null,
+        grade: form.grade || null,
+        branch: form.stage === "secondary" ? form.branch || null : null,
+        enrollment_date: form.enrollment_date || localDateString(),
+      })
+      .select("id")
+      .single();
+    if (error || !inserted) {
+      setSaving(false);
+      toast.error(error?.message ?? "Error");
+      return;
+    }
     if (pickedCourses.length > 0) {
       const { error: enrollErr } = await supabase.from("student_courses").insert(
         pickedCourses.map((p) => ({
@@ -175,7 +219,11 @@ function StudentsPage() {
           teacher_id: p.teacher_id,
         })),
       );
-      if (enrollErr) { setSaving(false); toast.error(enrollErr.message); return; }
+      if (enrollErr) {
+        setSaving(false);
+        toast.error(enrollErr.message);
+        return;
+      }
     }
     setSaving(false);
     toast.success(t("تمت إضافة الطالب", "Student added"));
@@ -191,7 +239,8 @@ function StudentsPage() {
   const settledCount = students.length - owesCount;
   const stageCount = (id: StageId) => students.filter((s) => s.stage === id).length;
   const gradeOptions = stageId === "all" ? [] : GRADES[stageId];
-  const gradeCount = (gid: string) => students.filter((s) => s.stage === stageId && s.grade === gid).length;
+  const gradeCount = (gid: string) =>
+    students.filter((s) => s.stage === stageId && s.grade === gid).length;
   const branchCount = (bid: string) => students.filter((s) => s.branch === bid).length;
   const clearFilters = () => {
     setCourseId("all");
@@ -213,7 +262,9 @@ function StudentsPage() {
     if (!matchText) return false;
     if (
       courseId !== "all" &&
-      !(s.student_courses ?? []).some((sc: { courses: { id: string } | null }) => sc.courses?.id === courseId)
+      !(s.student_courses ?? []).some(
+        (sc: { courses: { id: string } | null }) => sc.courses?.id === courseId,
+      )
     )
       return false;
     const owed = studentBalance(s).owed;
@@ -224,7 +275,9 @@ function StudentsPage() {
     if (branchId !== "all" && s.branch !== branchId) return false;
     if (
       teacherId !== "all" &&
-      !(s.student_courses ?? []).some((sc: { teacher_id: string | null }) => sc.teacher_id === teacherId)
+      !(s.student_courses ?? []).some(
+        (sc: { teacher_id: string | null }) => sc.teacher_id === teacherId,
+      )
     )
       return false;
     return true;
@@ -238,7 +291,11 @@ function StudentsPage() {
       key: "stage",
       label: stageLabel(stageId, t) ?? "",
       icon: Layers,
-      clear: () => { setStageId("all"); setGradeId("all"); setBranchId("all"); },
+      clear: () => {
+        setStageId("all");
+        setGradeId("all");
+        setBranchId("all");
+      },
     });
   if (gradeId !== "all")
     activeChips.push({
@@ -277,7 +334,6 @@ function StudentsPage() {
       clear: () => setPayStatus("all"),
     });
   const activeCount = activeChips.length;
-
 
   return (
     <div className="space-y-4 pb-24">
@@ -344,8 +400,6 @@ function StudentsPage() {
         </div>
       )}
 
-
-
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("جاري التحميل…", "Loading…")}</p>
       ) : students.length === 0 ? (
@@ -361,7 +415,10 @@ function StudentsPage() {
         />
       ) : list.length === 0 ? (
         <p className="rounded-xl bg-card p-6 text-center text-sm text-muted-foreground shadow-soft">
-          {t("ما في نتائج مطابقة. جرّب تعديل البحث أو الفلاتر.", "No matching results. Try adjusting the search or filters.")}
+          {t(
+            "ما في نتائج مطابقة. جرّب تعديل البحث أو الفلاتر.",
+            "No matching results. Try adjusting the search or filters.",
+          )}
         </p>
       ) : (
         <ul className="space-y-3.5">
@@ -399,7 +456,11 @@ function StudentsPage() {
                       <span className="rounded-lg border border-primary-foreground/25 bg-primary-foreground/15 px-2.5 py-1 text-[10px] font-bold">
                         {settled ? t("مسدّد", "Settled") : t("عليه مستحقات", "Owes")}
                       </span>
-                      {[stageLabel(s.stage, t), gradeLabel(s.stage, s.grade, t), branchLabel(s.branch, t)]
+                      {[
+                        stageLabel(s.stage, t),
+                        gradeLabel(s.stage, s.grade, t),
+                        branchLabel(s.branch, t),
+                      ]
                         .filter(Boolean)
                         .map((label) => (
                           <span
@@ -624,76 +685,78 @@ function StudentsPage() {
               </div>
             )}
             {classificationReady && (
-            <div className="space-y-1.5">
-              <Label>{t("المواد المسجلة", "Enrolled courses")}</Label>
-              {courses.length === 0 ? (
-
-                <p className="text-xs text-muted-foreground">
-                  {t("ما في مواد بعد — أضف مادة من تبويب المواد", "No courses yet — add one from the Courses tab")}
-                </p>
-              ) : matchingCourses.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {t(
-                    "ما في مواد مخصصة لهالصف — أضف مادة لهالصف من تبويب المواد",
-                    "No courses for this grade yet — add one from the Courses tab",
-                  )}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {matchingCourses.map((c) => {
-                    const pick = pickedCourses.find((p) => p.course_id === c.id);
-                    const links = courseTeachers(c as never);
-                    return (
-                      <div key={c.id} className="space-y-1.5">
-                        <button
-                          type="button"
-                          onClick={() => toggleCoursePick(c as never)}
-                          className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                            pick
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-card text-muted-foreground active:bg-muted"
-                          }`}
-                        >
-                          <span className="truncate">{c.name}</span>
-                          <span className="num shrink-0">
-                            {money(
-                              enrollmentFee({
-                                custom_fee: null,
-                                teacher_id: pick?.teacher_id ?? null,
-                                courses: c as never,
-                              }),
-                            )}
-                          </span>
-                        </button>
-                        {pick && links.length > 1 && (
-                          <div className="flex flex-wrap items-center gap-1.5 ps-1">
-                            <span className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-                              <User className="size-3" />
-                              {t("الأستاذ:", "Teacher:")}
+              <div className="space-y-1.5">
+                <Label>{t("المواد المسجلة", "Enrolled courses")}</Label>
+                {courses.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      "ما في مواد بعد — أضف مادة من تبويب المواد",
+                      "No courses yet — add one from the Courses tab",
+                    )}
+                  </p>
+                ) : matchingCourses.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      "ما في مواد مخصصة لهالصف — أضف مادة لهالصف من تبويب المواد",
+                      "No courses for this grade yet — add one from the Courses tab",
+                    )}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {matchingCourses.map((c) => {
+                      const pick = pickedCourses.find((p) => p.course_id === c.id);
+                      const links = courseTeachers(c as never);
+                      return (
+                        <div key={c.id} className="space-y-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleCoursePick(c as never)}
+                            className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                              pick
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card text-muted-foreground active:bg-muted"
+                            }`}
+                          >
+                            <span className="truncate">{c.name}</span>
+                            <span className="num shrink-0">
+                              {money(
+                                enrollmentFee({
+                                  custom_fee: null,
+                                  teacher_id: pick?.teacher_id ?? null,
+                                  courses: c as never,
+                                }),
+                              )}
                             </span>
-                            {links.map((l) => (
-                              <button
-                                key={l.teacher_id}
-                                type="button"
-                                onClick={() => setPickedTeacher(c.id, l.teacher_id)}
-                                className={`num rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                                  pick.teacher_id === l.teacher_id
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border bg-card text-muted-foreground active:bg-muted"
-                                }`}
-                              >
-                                {l.teachers?.name}
-                                {l.price != null ? ` · ${money(Number(l.price))}` : ""}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                          </button>
+                          {pick && links.length > 1 && (
+                            <div className="flex flex-wrap items-center gap-1.5 ps-1">
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                                <User className="size-3" />
+                                {t("الأستاذ:", "Teacher:")}
+                              </span>
+                              {links.map((l) => (
+                                <button
+                                  key={l.teacher_id}
+                                  type="button"
+                                  onClick={() => setPickedTeacher(c.id, l.teacher_id)}
+                                  className={`num rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                                    pick.teacher_id === l.teacher_id
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border bg-card text-muted-foreground active:bg-muted"
+                                  }`}
+                                >
+                                  {l.teachers?.name}
+                                  {l.price != null ? ` · ${money(Number(l.price))}` : ""}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="space-y-1.5">
@@ -747,15 +810,34 @@ function StudentsPage() {
 
           <div className="max-h-[60vh] space-y-5 overflow-y-auto px-5 py-5">
             <FilterGroup icon={Wallet} title={t("حالة الدفع", "Payment status")}>
-              <FilterChip active={payStatus === "all"} onClick={() => setPayStatus("all")} label={t("الكل", "All")} count={students.length} />
-              <FilterChip active={payStatus === "owes"} onClick={() => setPayStatus("owes")} label={t("عليه مستحقات", "Owes")} count={owesCount} />
-              <FilterChip active={payStatus === "settled"} onClick={() => setPayStatus("settled")} label={t("مسدّد", "Settled")} count={settledCount} />
+              <FilterChip
+                active={payStatus === "all"}
+                onClick={() => setPayStatus("all")}
+                label={t("الكل", "All")}
+                count={students.length}
+              />
+              <FilterChip
+                active={payStatus === "owes"}
+                onClick={() => setPayStatus("owes")}
+                label={t("عليه مستحقات", "Owes")}
+                count={owesCount}
+              />
+              <FilterChip
+                active={payStatus === "settled"}
+                onClick={() => setPayStatus("settled")}
+                label={t("مسدّد", "Settled")}
+                count={settledCount}
+              />
             </FilterGroup>
 
             <FilterGroup icon={Layers} title={t("المرحلة الدراسية", "Education stage")}>
               <FilterChip
                 active={stageId === "all"}
-                onClick={() => { setStageId("all"); setGradeId("all"); setBranchId("all"); }}
+                onClick={() => {
+                  setStageId("all");
+                  setGradeId("all");
+                  setBranchId("all");
+                }}
                 label={t("الكل", "All")}
                 count={students.length}
               />
@@ -776,7 +858,11 @@ function StudentsPage() {
 
             {stageId === "secondary" && (
               <FilterGroup icon={Split} title={t("الفرع", "Branch")}>
-                <FilterChip active={branchId === "all"} onClick={() => setBranchId("all")} label={t("الكل", "All")} />
+                <FilterChip
+                  active={branchId === "all"}
+                  onClick={() => setBranchId("all")}
+                  label={t("الكل", "All")}
+                />
                 {BRANCHES.map((b) => (
                   <FilterChip
                     key={b.id}
@@ -791,7 +877,11 @@ function StudentsPage() {
 
             {gradeOptions.length > 0 && (
               <FilterGroup icon={GraduationCap} title={t("الصف", "Grade")}>
-                <FilterChip active={gradeId === "all"} onClick={() => setGradeId("all")} label={t("الكل", "All")} />
+                <FilterChip
+                  active={gradeId === "all"}
+                  onClick={() => setGradeId("all")}
+                  label={t("الكل", "All")}
+                />
                 {gradeOptions.map((g) => (
                   <FilterChip
                     key={g.id}
@@ -806,7 +896,12 @@ function StudentsPage() {
 
             {courses.length > 0 && (
               <FilterGroup icon={BookOpen} title={t("المادة", "Course")}>
-                <FilterChip active={courseId === "all"} onClick={() => setCourseId("all")} label={t("الكل", "All")} count={students.length} />
+                <FilterChip
+                  active={courseId === "all"}
+                  onClick={() => setCourseId("all")}
+                  label={t("الكل", "All")}
+                  count={students.length}
+                />
                 {courses.map((c) => (
                   <FilterChip
                     key={c.id}
@@ -821,16 +916,25 @@ function StudentsPage() {
 
             {teachers.length > 0 && (
               <FilterGroup icon={User} title={t("المدرّس", "Teacher")}>
-                <FilterChip active={teacherId === "all"} onClick={() => setTeacherId("all")} label={t("الكل", "All")} count={students.length} />
+                <FilterChip
+                  active={teacherId === "all"}
+                  onClick={() => setTeacherId("all")}
+                  label={t("الكل", "All")}
+                  count={students.length}
+                />
                 {teachers.map((tc) => (
                   <FilterChip
                     key={tc.id}
                     active={teacherId === tc.id}
                     onClick={() => setTeacherId(tc.id)}
                     label={tc.name}
-                    count={students.filter((s) =>
-                      (s.student_courses ?? []).some((sc: { teacher_id: string | null }) => sc.teacher_id === tc.id),
-                    ).length}
+                    count={
+                      students.filter((s) =>
+                        (s.student_courses ?? []).some(
+                          (sc: { teacher_id: string | null }) => sc.teacher_id === tc.id,
+                        ),
+                      ).length
+                    }
                   />
                 ))}
               </FilterGroup>
@@ -838,7 +942,13 @@ function StudentsPage() {
           </div>
 
           <DialogFooter className="flex-row gap-2 border-t border-border bg-muted/40 px-5 py-4">
-            <Button variant="outline" size="lg" className="flex-1" onClick={clearFilters} disabled={activeCount === 0}>
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex-1"
+              onClick={clearFilters}
+              disabled={activeCount === 0}
+            >
               <RotateCcw className="size-4" />
               {t("مسح", "Reset")}
             </Button>
@@ -849,7 +959,6 @@ function StudentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

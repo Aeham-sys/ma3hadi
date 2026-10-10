@@ -18,12 +18,33 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FabButton } from "@/components/FabButton";
-import { ChevronLeft, Wallet, Check, Pencil, MessageCircle, AlertCircle, CheckCircle2, Trash2, TriangleAlert, User, Ban, RotateCcw } from "lucide-react";
+import {
+  ChevronLeft,
+  Wallet,
+  Check,
+  Pencil,
+  MessageCircle,
+  AlertCircle,
+  CheckCircle2,
+  Trash2,
+  TriangleAlert,
+  User,
+  Ban,
+  RotateCcw,
+} from "lucide-react";
 import { courseTeachers, enrollmentFee, isActivePayment } from "@/lib/fees";
 import { toast } from "sonner";
-import { STAGES, GRADES, BRANCHES, stageLabel, gradeLabel, branchLabel, courseMatchesStudent, classificationLabel, type StageId } from "@/lib/stages";
-
-
+import {
+  STAGES,
+  GRADES,
+  BRANCHES,
+  stageLabel,
+  gradeLabel,
+  branchLabel,
+  courseMatchesStudent,
+  classificationLabel,
+  type StageId,
+} from "@/lib/stages";
 
 export const Route = createFileRoute("/_authenticated/students/$id")({
   head: ({ params }) => {
@@ -49,16 +70,18 @@ type EnrolledRow = {
   custom_fee: number | null;
   course_id: string;
   teacher_id: string | null;
-  courses:
-    | {
-        id: string;
-        name: string;
-        price: number;
-        teacher_courses:
-          | { teacher_id: string; price: number | null; teachers: { id: string; name: string } | null }[]
-          | null;
-      }
-    | null;
+  courses: {
+    id: string;
+    name: string;
+    price: number;
+    teacher_courses:
+      | {
+          teacher_id: string;
+          price: number | null;
+          teachers: { id: string; name: string } | null;
+        }[]
+      | null;
+  } | null;
 };
 
 type PaymentRow = {
@@ -70,7 +93,6 @@ type PaymentRow = {
   status: string | null;
   cancelled_at: string | null;
 };
-
 
 function StudentDetail() {
   const { id } = Route.useParams();
@@ -139,7 +161,10 @@ function StudentDetail() {
 
   const savePayment = async () => {
     const amount = Number(pay.amount);
-    if (!amount) { toast.error(t("أدخل المبلغ", "Enter an amount")); return; }
+    if (!amount) {
+      toast.error(t("أدخل المبلغ", "Enter an amount"));
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("payments").insert({
       student_id: id,
@@ -149,14 +174,20 @@ function StudentDetail() {
       note: pay.note || null,
     });
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     setPayOpen(false);
     setPay({ amount: "", date: "", method: "cash", note: "" });
     await refetch();
     refresh("students", "recent-feed", "monthly-collections");
     setCelebrate(true);
     setTimeout(() => setCelebrate(false), 2600);
-    await supabase.from("institutes").update({ onboarding_completed: true }).eq("owner_id", (await supabase.auth.getUser()).data.user!.id);
+    await supabase
+      .from("institutes")
+      .update({ onboarding_completed: true })
+      .eq("owner_id", (await supabase.auth.getUser()).data.user!.id);
     refresh("institute");
     toast.success(t("انحفظت الدفعة! المستحقات تحدّثت", "Payment saved! Balance updated"));
   };
@@ -172,7 +203,11 @@ function StudentDetail() {
         teacher_id: links.length === 1 ? links[0]!.teacher_id : null,
       });
     } else {
-      await supabase.from("student_courses").delete().eq("student_id", id).eq("course_id", courseId);
+      await supabase
+        .from("student_courses")
+        .delete()
+        .eq("student_id", id)
+        .eq("course_id", courseId);
     }
     await refetch();
     refresh("students", "courses");
@@ -183,7 +218,10 @@ function StudentDetail() {
       .from("student_courses")
       .update({ teacher_id: teacherId })
       .eq("id", rowId);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     await refetch();
     refresh("students");
   };
@@ -202,7 +240,10 @@ function StudentDetail() {
         status: patch.status,
       })
       .eq("id", row.id);
-    if (error) { toast.error(error.message); return false; }
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
     await refetch();
     refresh("students", "recent-feed", "monthly-collections");
     toast.success(
@@ -227,7 +268,10 @@ function StudentDetail() {
     // payments & student_courses are FK-linked with ON DELETE CASCADE
     const { error } = await supabase.from("students").delete().eq("id", id);
     setDeleting(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     refresh("students", "recent-feed", "monthly-collections", "courses");
     toast.success(t("انحذف الطالب مع كل سجلاته", "Student deleted with all records"));
     navigate({ to: "/students" });
@@ -254,7 +298,11 @@ function StudentDetail() {
                 {[student.name, student.surname].filter(Boolean).join(" ")}
               </h1>
               <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                {[stageLabel(student.stage, t), gradeLabel(student.stage, student.grade, t), branchLabel(student.branch, t)]
+                {[
+                  stageLabel(student.stage, t),
+                  gradeLabel(student.stage, student.grade, t),
+                  branchLabel(student.branch, t),
+                ]
                   .filter(Boolean)
                   .map((label) => (
                     <span
@@ -326,10 +374,14 @@ function StudentDetail() {
       </div>
 
       {/* المستحقات */}
-      <div className={`rounded-xl bg-card p-5 shadow-soft transition-shadow ${celebrate ? "ring-2 ring-success" : ""}`}>
+      <div
+        className={`rounded-xl bg-card p-5 shadow-soft transition-shadow ${celebrate ? "ring-2 ring-success" : ""}`}
+      >
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-muted-foreground">{t("المستحقات", "Amount owed")}</p>
+            <p className="text-xs font-semibold text-muted-foreground">
+              {t("المستحقات", "Amount owed")}
+            </p>
             <p
               key={owed}
               className={`num mt-1 text-4xl font-extrabold ${owed > 0 ? "text-primary" : "text-success"} ${
@@ -349,11 +401,15 @@ function StudentDetail() {
         </div>
         <div className="num mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-muted/60 px-3 py-2.5">
-            <p className="text-[10px] font-semibold text-muted-foreground">{t("إجمالي المواد", "Total fees")}</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">
+              {t("إجمالي المواد", "Total fees")}
+            </p>
             <p className="mt-0.5 text-sm font-extrabold text-foreground">{money(due)}</p>
           </div>
           <div className="rounded-xl bg-muted/60 px-3 py-2.5">
-            <p className="text-[10px] font-semibold text-muted-foreground">{t("المدفوع", "Paid")}</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">
+              {t("المدفوع", "Paid")}
+            </p>
             <p className="mt-0.5 text-sm font-extrabold text-success">{money(paid)}</p>
           </div>
         </div>
@@ -379,11 +435,12 @@ function StudentDetail() {
         )}
       </div>
 
-
       {/* المواد */}
       <section className="rounded-xl bg-card p-5 shadow-soft">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-foreground">{t("المواد المسجّلة", "Enrolled courses")}</h2>
+          <h2 className="text-sm font-bold text-foreground">
+            {t("المواد المسجّلة", "Enrolled courses")}
+          </h2>
           <Button variant="outline" size="sm" onClick={() => setCoursesOpen(true)}>
             {t("تعديل", "Edit")}
           </Button>
@@ -409,7 +466,11 @@ function StudentDetail() {
                         className="num h-8 w-24 bg-card text-xs"
                         defaultValue={e.custom_fee ?? ""}
                         placeholder={String(
-                          enrollmentFee({ custom_fee: null, teacher_id: e.teacher_id, courses: e.courses }),
+                          enrollmentFee({
+                            custom_fee: null,
+                            teacher_id: e.teacher_id,
+                            courses: e.courses,
+                          }),
                         )}
                         onBlur={(ev) => setFee(e.id, ev.target.value)}
                       />
@@ -449,7 +510,10 @@ function StudentDetail() {
           </ul>
         )}
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {t("فيك تحط سعر خاص لكل مادة بدل السعر الافتراضي.", "Override the default fee per course if needed.")}
+          {t(
+            "فيك تحط سعر خاص لكل مادة بدل السعر الافتراضي.",
+            "Override the default fee per course if needed.",
+          )}
         </p>
       </section>
 
@@ -613,7 +677,9 @@ function StudentDetail() {
             </Button>
             <Button variant="destructive" onClick={deleteStudent} disabled={deleting}>
               <Trash2 className="size-4" />
-              {deleting ? t("جارٍ الحذف…", "Deleting…") : t("نعم، احذف الطالب", "Yes, delete student")}
+              {deleting
+                ? t("جارٍ الحذف…", "Deleting…")
+                : t("نعم، احذف الطالب", "Yes, delete student")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -722,7 +788,10 @@ function EditStudentDialog({
         branch: form.stage === "secondary" ? form.branch || null : null,
       })
       .eq("id", student.id);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success(t("تم التعديل", "Updated"));
     onOpenChange(false);
     onSaved();
@@ -738,11 +807,17 @@ function EditStudentDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>{t("اسم الطالب", "Name")}</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>{t("الكنية", "Surname")}</Label>
-              <Input value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} />
+              <Input
+                value={form.surname}
+                onChange={(e) => setForm({ ...form, surname: e.target.value })}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -761,11 +836,19 @@ function EditStudentDialog({
           </div>
           <div className="space-y-1.5">
             <Label>{t("رقم هاتف الطالب", "Student phone")}</Label>
-            <Input dir="ltr" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <Input
+              dir="ltr"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>{t("رقم هاتف ولي التلميذ", "Guardian phone")}</Label>
-            <Input dir="ltr" value={form.guardian_phone} onChange={(e) => setForm({ ...form, guardian_phone: e.target.value })} />
+            <Input
+              dir="ltr"
+              value={form.guardian_phone}
+              onChange={(e) => setForm({ ...form, guardian_phone: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>{t("المرحلة الدراسية", "Education stage")}</Label>
@@ -776,12 +859,14 @@ function EditStudentDialog({
                   <button
                     key={st.id}
                     type="button"
-                    onClick={() => setForm({ ...form, stage: active ? "" : st.id, grade: "", branch: "" })}
+                    onClick={() =>
+                      setForm({ ...form, stage: active ? "" : st.id, grade: "", branch: "" })
+                    }
                     className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                        active
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-card text-muted-foreground active:bg-muted"
-                      }`}
+                      active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground active:bg-muted"
+                    }`}
                   >
                     {t(st.ar, st.en)}
                   </button>
@@ -905,7 +990,10 @@ function PaymentEditDialog({
           {cancelled && (
             <p className="flex items-center gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
               <Ban className="size-4" />
-              {t("هالدفعة ملغاة وما بتنحسب بالمحصل.", "This payment is cancelled and excluded from totals.")}
+              {t(
+                "هالدفعة ملغاة وما بتنحسب بالمحصل.",
+                "This payment is cancelled and excluded from totals.",
+              )}
             </p>
           )}
           <div className="space-y-1.5">
