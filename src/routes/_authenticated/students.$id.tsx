@@ -32,7 +32,7 @@ import {
   Ban,
   RotateCcw,
 } from "lucide-react";
-import { courseTeachers, enrollmentFee, isActivePayment } from "@/lib/fees";
+import { courseTeachers, enrollmentFee, isActivePayment, isInCurrentPeriod } from "@/lib/fees";
 import { toast } from "sonner";
 import {
   STAGES,
@@ -94,6 +94,60 @@ type PaymentRow = {
   cancelled_at: string | null;
 };
 
+type StudentHistoryCourse = {
+  course?: string;
+  fee?: number;
+};
+
+type StudentHistoryEntry = {
+  started?: string;
+  withdrawn_on?: string;
+  reason?: string;
+  courses: StudentHistoryCourse[];
+  due?: number;
+  paid?: number;
+};
+
+function parseStudentHistory(value: unknown): StudentHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const courses = Array.isArray(record["courses"])
+      ? record["courses"].flatMap((course): StudentHistoryCourse[] => {
+          if (course === null || typeof course !== "object" || Array.isArray(course)) return [];
+          const courseRecord = course as Record<string, unknown>;
+          const courseName = courseRecord["course"];
+          const fee = courseRecord["fee"];
+          return [
+            {
+              ...(typeof courseName === "string" ? { course: courseName } : {}),
+              ...(typeof fee === "number" && Number.isFinite(fee) ? { fee } : {}),
+            },
+          ];
+        })
+      : [];
+
+    return [
+      {
+        ...(typeof record["started"] === "string" ? { started: record["started"] } : {}),
+        ...(typeof record["withdrawn_on"] === "string"
+          ? { withdrawn_on: record["withdrawn_on"] }
+          : {}),
+        ...(typeof record["reason"] === "string" ? { reason: record["reason"] } : {}),
+        courses,
+        ...(typeof record["due"] === "number" && Number.isFinite(record["due"])
+          ? { due: record["due"] }
+          : {}),
+        ...(typeof record["paid"] === "number" && Number.isFinite(record["paid"])
+          ? { paid: record["paid"] }
+          : {}),
+      },
+    ];
+  });
+}
+
 function StudentDetail() {
   const { id } = Route.useParams();
   const { t, lang } = usePrefs();
@@ -107,7 +161,7 @@ function StudentDetail() {
       const { data, error } = await supabase
         .from("students")
         .select(
-          "*, student_courses(id, custom_fee, course_id, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price, teachers(id,name)))), payments(id,amount,date,method,note,status,cancelled_at)",
+          "*, status, period_start, withdrawn_at, history, student_courses(id, custom_fee, course_id, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price, teachers(id,name)))), payments(id,amount,date,method,note,status,cancelled_at)",
         )
         .eq("id", id)
         .single();
@@ -125,6 +179,11 @@ function StudentDetail() {
   const [pay, setPay] = useState({ amount: "", date: "", method: "cash", note: "" });
   const [editingPayment, setEditingPayment] = useState<PaymentRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
   const navigate = useNavigate();
 
   if (!student) {
@@ -145,8 +204,14 @@ function StudentDetail() {
   );
 
   const due = enrolled.reduce((s, e) => s + enrollmentFee(e), 0);
-  const paid = payments.filter(isActivePayment).reduce((s, p) => s + Number(p.amount), 0);
+  const paid = payments
+    .filter((p) => isActivePayment(p) && isInCurrentPeriod(p, student.period_start))
+    .reduce((s, p) => s + Number(p.amount), 0);
   const owed = due - paid;
+  const isWithdrawn = student.status === "withdrawn";
+  const history = parseStudentHistory(student.history).sort((a, b) =>
+    (b.withdrawn_on ?? b.started ?? "").localeCompare(a.withdrawn_on ?? a.started ?? ""),
+  );
 
   const reminderHref = waLink(
     student.guardian_phone ?? student.phone,
@@ -160,6 +225,15 @@ function StudentDetail() {
   );
 
   const savePayment = async () => {
+    if (isWithdrawn) {
+      toast.error(
+        t(
+          "الطالب منسحب، لا يمكن تسجيل دفعة جديدة",
+          "This student is withdrawn and cannot receive new payments",
+        ),
+      );
+      return;
+    }
     const amount = Number(pay.amount);
     if (!amount) {
       toast.error(t("أدخل المبلغ", "Enter an amount"));
@@ -193,6 +267,15 @@ function StudentDetail() {
   };
 
   const toggleCourse = async (courseId: string, on: boolean) => {
+    if (isWithdrawn) {
+      toast.error(
+        t(
+          "الطالب منسحب، لا يمكن تعديل المواد",
+          "This student is withdrawn and courses are read-only",
+        ),
+      );
+      return;
+    }
     if (on) {
       const course = courses.find((c) => c.id === courseId);
       const links = courseTeachers(course as never);
@@ -214,6 +297,15 @@ function StudentDetail() {
   };
 
   const setEnrollmentTeacher = async (rowId: string, teacherId: string | null) => {
+    if (isWithdrawn) {
+      toast.error(
+        t(
+          "الطالب منسحب، لا يمكن تعديل المواد",
+          "This student is withdrawn and courses are read-only",
+        ),
+      );
+      return;
+    }
     const { error } = await supabase
       .from("student_courses")
       .update({ teacher_id: teacherId })
@@ -230,6 +322,15 @@ function StudentDetail() {
     row: PaymentRow,
     patch: { amount: number; date: string; method: string; note: string | null; status: string },
   ) => {
+    if (isWithdrawn) {
+      toast.error(
+        t(
+          "الطالب منسحب، لا يمكن تعديل الدفعات",
+          "This student is withdrawn and payment history is read-only",
+        ),
+      );
+      return false;
+    }
     const { error } = await supabase
       .from("payments")
       .update({
@@ -255,6 +356,15 @@ function StudentDetail() {
   };
 
   const setFee = async (rowId: string, fee: string) => {
+    if (isWithdrawn) {
+      toast.error(
+        t(
+          "الطالب منسحب، لا يمكن تعديل المواد",
+          "This student is withdrawn and courses are read-only",
+        ),
+      );
+      return;
+    }
     await supabase
       .from("student_courses")
       .update({ custom_fee: fee === "" ? null : Number(fee) })
@@ -263,13 +373,107 @@ function StudentDetail() {
     refresh("students");
   };
 
+  const withdrawStudentAction = async () => {
+    if (withdrawing) return;
+    if (owed !== 0) {
+      const message =
+        owed > 0
+          ? t(
+              `حسابه مو خالص، باقي عليه ${money(owed)}. سدّد أول، أو نزّل رسم المادة إذا بدك تسامحه.`,
+              `Balance is not settled, ${money(owed)} remains. Settle it first, or reduce the course fee if you want to waive it.`,
+            )
+          : t(
+              `دافع زيادة ${money(Math.abs(owed))}. سوّي الحساب أول (عدّل المبلغ أو الرسم).`,
+              `Overpaid by ${money(Math.abs(owed))}. Settle the account first (adjust the amount or fee).`,
+            );
+      toast.error(message);
+      return;
+    }
+    setWithdrawing(true);
+    const { error } = await supabase.rpc("withdraw_student", {
+      p_student_id: id,
+      ...(withdrawReason.trim() ? { p_reason: withdrawReason.trim() } : {}),
+      p_today: localDateString(),
+    });
+    setWithdrawing(false);
+    if (error) {
+      const code = error.code;
+      const message =
+        code === "SW001"
+          ? t(
+              `حسابه مو خالص، باقي عليه ${money(Number(error.details ?? owed))}. سدّد أول، أو نزّل رسم المادة إذا بدك تسامحه.`,
+              `Balance is not settled, ${money(Number(error.details ?? owed))} remains. Settle it first, or lower the course fee if you want to waive it.`,
+            )
+          : code === "SW002"
+            ? t("الطالب منسحب من قبل", "Student is already withdrawn")
+            : code === "SW003"
+              ? t("ما لقينا الطالب", "Student not found")
+              : code === "42501"
+                ? t(
+                    "ما زبطت العملية، جرّب كمان مرة",
+                    "The operation could not be completed, please try again",
+                  )
+                : t(
+                    "ما زبطت العملية، جرّب كمان مرة",
+                    "The operation could not be completed, please try again",
+                  );
+      toast.error(message);
+      return;
+    }
+    setWithdrawOpen(false);
+    setWithdrawReason("");
+    await refetch();
+    refresh("students", "courses", "recent-feed", "monthly-collections", "budget");
+    toast.success(
+      t("انسحب الطالب، ملفه ودفعاته محفوظين", "Student withdrawn, file and payments preserved"),
+    );
+  };
+
+  const reactivateStudentAction = async () => {
+    if (reactivating) return;
+    setReactivating(true);
+    const { error } = await supabase.rpc("reactivate_student", {
+      p_student_id: id,
+      p_start: localDateString(),
+    });
+    setReactivating(false);
+    if (error) {
+      const code = error.code;
+      toast.error(
+        code === "SW004"
+          ? t("الطالب مو منسحب", "Student is not withdrawn")
+          : t(
+              "ما زبطت العملية، جرّب كمان مرة",
+              "The operation could not be completed, please try again",
+            ),
+      );
+      return;
+    }
+    setReactivateOpen(false);
+    await refetch();
+    refresh("students", "courses", "recent-feed", "monthly-collections", "budget");
+    toast.success(
+      t("رجع الطالب، وحسابه بيبدأ من اليوم", "Student reactivated and balance starts today"),
+    );
+  };
+
   const deleteStudent = async () => {
     setDeleting(true);
     // payments & student_courses are FK-linked with ON DELETE CASCADE
     const { error } = await supabase.from("students").delete().eq("id", id);
     setDeleting(false);
     if (error) {
-      toast.error(error.message);
+      toast.error(
+        error.code === "SD001"
+          ? t(
+              "عنده دفعات، استخدم انسحاب الطالب بدل الحذف",
+              "This student has payments; use withdraw instead of delete",
+            )
+          : t(
+              "ما زبطت العملية، جرّب كمان مرة",
+              "The operation could not be completed, please try again",
+            ),
+      );
       return;
     }
     refresh("students", "recent-feed", "monthly-collections", "courses");
@@ -285,6 +489,15 @@ function StudentDetail() {
       >
         <ChevronLeft className="size-4 icon-flip" /> {t("الطلاب", "Students")}
       </Link>
+
+      {isWithdrawn && (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+          {t(
+            `منسحب من ${shortDate(student.withdrawn_at ?? "")}`,
+            `Withdrawn since ${shortDate(student.withdrawn_at ?? "")}`,
+          )}
+        </div>
+      )}
 
       {/* بطاقة الطالب */}
       <div className="overflow-hidden rounded-xl shadow-soft">
@@ -340,13 +553,32 @@ function StudentDetail() {
               >
                 <Pencil className="size-4" />
               </button>
-              <button
-                onClick={() => setDeleteOpen(true)}
-                aria-label={t("حذف الطالب", "Delete student")}
-                className="grid size-9 place-items-center rounded-xl border border-primary-foreground/25 bg-primary-foreground/15 transition-colors hover:bg-destructive hover:border-destructive"
-              >
-                <Trash2 className="size-4" />
-              </button>
+              {!isWithdrawn ? (
+                <button
+                  onClick={() => setWithdrawOpen(true)}
+                  aria-label={t("انسحاب الطالب", "Withdraw student")}
+                  className="grid size-9 place-items-center rounded-xl border border-primary-foreground/25 bg-primary-foreground/15 transition-colors hover:bg-destructive hover:border-destructive"
+                >
+                  <Ban className="size-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setReactivateOpen(true)}
+                  aria-label={t("إعادة تفعيل الطالب", "Reactivate student")}
+                  className="grid size-9 place-items-center rounded-xl border border-primary-foreground/25 bg-primary-foreground/15 transition-colors hover:bg-success hover:border-success"
+                >
+                  <RotateCcw className="size-4" />
+                </button>
+              )}
+              {payments.length === 0 && (
+                <button
+                  onClick={() => setDeleteOpen(true)}
+                  aria-label={t("حذف الطالب", "Delete student")}
+                  className="grid size-9 place-items-center rounded-xl border border-primary-foreground/25 bg-primary-foreground/15 transition-colors hover:bg-destructive hover:border-destructive"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -372,6 +604,75 @@ function StudentDetail() {
           ))}
         </div>
       </div>
+
+      {payments.length > 0 && !isWithdrawn && (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "عنده دفعات، استخدم انسحاب الطالب بدل الحذف",
+            "This student has payments; use withdraw instead of delete",
+          )}
+        </p>
+      )}
+
+      {history.length > 0 && (
+        <section className="rounded-xl bg-card p-5 shadow-soft">
+          <h2 className="text-sm font-bold text-foreground">
+            {t("السجل السابق", "Previous periods")}
+          </h2>
+          <ul className="mt-3 space-y-3">
+            {history.map((entry, index) => (
+              <li
+                key={`${entry.withdrawn_on ?? entry.started ?? "period"}-${index}`}
+                className="rounded-xl bg-muted/60 px-3.5 py-3"
+              >
+                {entry.started && entry.withdrawn_on && (
+                  <p className="text-xs font-bold text-foreground">
+                    {t("من ", "From ")}
+                    {shortDate(entry.started)}
+                    {t(" إلى ", " to ")}
+                    {shortDate(entry.withdrawn_on)}
+                  </p>
+                )}
+                {entry.courses.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {entry.courses.map((course, courseIndex) => (
+                      <li
+                        key={`${course.course ?? "course"}-${courseIndex}`}
+                        className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+                      >
+                        <span>{course.course ?? t("مادة", "Course")}</span>
+                        {course.fee !== undefined && (
+                          <span dir="ltr" className="num shrink-0">
+                            {money(course.fee)}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {entry.due !== undefined && entry.paid !== undefined && (
+                  <p className="mt-2 text-xs font-semibold text-muted-foreground">
+                    {t("المستحق ", "Due ")}
+                    <span dir="ltr" className="num">
+                      {money(entry.due)}
+                    </span>
+                    {t(" · المدفوع ", " · Paid ")}
+                    <span dir="ltr" className="num">
+                      {money(entry.paid)}
+                    </span>
+                  </p>
+                )}
+                {entry.reason && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t("السبب: ", "Reason: ")}
+                    {entry.reason}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* المستحقات */}
       <div
@@ -419,16 +720,18 @@ function StudentDetail() {
             {t("حساب دقيق، بدون ورق ولا إكسل", "Accurate math — no paper, no Excel")}
           </p>
         )}
-        <Button
-          variant="outline"
-          className="mt-4 w-full border-success/40 text-success hover:bg-success/10"
-          disabled={!reminderHref}
-          onClick={() => reminderHref && window.open(reminderHref, "_blank", "noopener")}
-        >
-          <MessageCircle className="size-4" />
-          {t("تذكير بالحساب عبر واتساب", "Remind via WhatsApp")}
-        </Button>
-        {!reminderHref && (
+        {!isWithdrawn && (
+          <Button
+            variant="outline"
+            className="mt-4 w-full border-success/40 text-success hover:bg-success/10"
+            disabled={!reminderHref}
+            onClick={() => reminderHref && window.open(reminderHref, "_blank", "noopener")}
+          >
+            <MessageCircle className="size-4" />
+            {t("تذكير بالحساب عبر واتساب", "Remind via WhatsApp")}
+          </Button>
+        )}
+        {!isWithdrawn && !reminderHref && (
           <p className="mt-2 text-[11px] text-muted-foreground">
             {t("أضف رقم هاتف للطالب لتفعيل التذكير.", "Add a phone number to enable reminders.")}
           </p>
@@ -441,9 +744,16 @@ function StudentDetail() {
           <h2 className="text-sm font-bold text-foreground">
             {t("المواد المسجّلة", "Enrolled courses")}
           </h2>
-          <Button variant="outline" size="sm" onClick={() => setCoursesOpen(true)}>
-            {t("تعديل", "Edit")}
-          </Button>
+          {!isWithdrawn && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11"
+              onClick={() => setCoursesOpen(true)}
+            >
+              {t("تعديل", "Edit")}
+            </Button>
+          )}
         </div>
         {enrolled.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
@@ -459,22 +769,24 @@ function StudentDetail() {
                     <span className="truncate text-sm font-semibold text-foreground">
                       {e.courses?.name}
                     </span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Input
-                        dir="ltr"
-                        type="number"
-                        className="num h-8 w-24 bg-card text-xs"
-                        defaultValue={e.custom_fee ?? ""}
-                        placeholder={String(
-                          enrollmentFee({
-                            custom_fee: null,
-                            teacher_id: e.teacher_id,
-                            courses: e.courses,
-                          }),
-                        )}
-                        onBlur={(ev) => setFee(e.id, ev.target.value)}
-                      />
-                    </div>
+                    {!isWithdrawn && (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Input
+                          dir="ltr"
+                          type="number"
+                          className="num h-8 w-24 bg-card text-xs"
+                          defaultValue={e.custom_fee ?? ""}
+                          placeholder={String(
+                            enrollmentFee({
+                              custom_fee: null,
+                              teacher_id: e.teacher_id,
+                              courses: e.courses,
+                            }),
+                          )}
+                          onBlur={(ev) => setFee(e.id, ev.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                   {links.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -486,6 +798,7 @@ function StudentDetail() {
                         <button
                           key={l.teacher_id}
                           type="button"
+                          disabled={isWithdrawn}
                           onClick={() =>
                             setEnrollmentTeacher(
                               e.id,
@@ -528,6 +841,7 @@ function StudentDetail() {
           <ul className="mt-3 divide-y divide-border">
             {payments.map((p) => {
               const cancelled = !isActivePayment(p);
+              const previousPeriod = !isInCurrentPeriod(p, student.period_start);
               return (
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
@@ -544,6 +858,11 @@ function StudentDetail() {
                         {lang === "ar" ? METHOD_LABELS[p.method]?.ar : METHOD_LABELS[p.method]?.en}
                         {p.note ? ` · ${p.note}` : ""}
                       </span>
+                      {previousPeriod && (
+                        <span className="rounded-lg bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                          {t("فترة سابقة", "Previous period")}
+                        </span>
+                      )}
                       {cancelled && (
                         <span className="flex items-center gap-1 rounded-lg bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
                           <Ban className="size-3" />
@@ -554,13 +873,15 @@ function StudentDetail() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="num text-xs text-muted-foreground">{shortDate(p.date)}</span>
-                    <button
-                      onClick={() => setEditingPayment(p)}
-                      aria-label={t("تعديل الدفعة", "Edit payment")}
-                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
+                    {!isWithdrawn && (
+                      <button
+                        onClick={() => setEditingPayment(p)}
+                        aria-label={t("تعديل الدفعة", "Edit payment")}
+                        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted"
+                      >
+                        <Pencil className="size-4" />
+                      </button>
+                    )}
                   </div>
                 </li>
               );
@@ -569,11 +890,13 @@ function StudentDetail() {
         )}
       </section>
 
-      <FabButton
-        label={t("تسجيل دفعة", "Record payment")}
-        icon={<Wallet className="size-5" />}
-        onClick={() => setPayOpen(true)}
-      />
+      {!isWithdrawn && (
+        <FabButton
+          label={t("تسجيل دفعة", "Record payment")}
+          icon={<Wallet className="size-5" />}
+          onClick={() => setPayOpen(true)}
+        />
+      )}
 
       {/* payment dialog */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
@@ -655,6 +978,127 @@ function StudentDetail() {
           refresh("students");
         }}
       />
+
+      {/* withdraw student */}
+      <Dialog
+        open={withdrawOpen}
+        onOpenChange={(open) => {
+          if (withdrawing) return;
+          setWithdrawOpen(open);
+          if (!open) setWithdrawReason("");
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("انسحاب الطالب", "Withdraw student")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {t(
+              "رح نحتفظ بملف الطالب وكل دفعاته. بنحفظ ملخص فترته، وبنفضّي مواده المسجّلة، وما بيعود يظهر بالقوائم العادية. وبتقدر ترجّعه بأي وقت.",
+              "The student’s file and payments will be kept. We’ll save a summary of this period, clear enrolled courses, and remove the student from regular lists. You can reactivate them at any time.",
+            )}
+          </p>
+          <div className="space-y-1.5">
+            <Label>{t("سبب الانسحاب (اختياري)", "Withdrawal reason (optional)")}</Label>
+            <Textarea
+              rows={3}
+              maxLength={500}
+              value={withdrawReason}
+              onChange={(event) => setWithdrawReason(event.target.value)}
+            />
+          </div>
+          {owed !== 0 && (
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
+              {owed > 0 ? (
+                <>
+                  {t("حسابه مو خالص، باقي عليه ", "Balance is not settled; ")}
+                  <span dir="ltr" className="num">
+                    {money(owed)}
+                  </span>
+                  {t(
+                    ". سدّد أول، أو نزّل رسم المادة إذا بدك تسامحه.",
+                    " remains. Settle it first, or reduce the course fee if you want to waive it.",
+                  )}
+                </>
+              ) : (
+                <>
+                  {t("دافع زيادة ", "Overpaid by ")}
+                  <span dir="ltr" className="num">
+                    {money(Math.abs(owed))}
+                  </span>
+                  {t(
+                    ". سوّي الحساب أول (عدّل المبلغ أو الرسم).",
+                    ". Settle the account first (adjust the amount or fee).",
+                  )}
+                </>
+              )}
+            </p>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              onClick={withdrawStudentAction}
+              disabled={withdrawing || owed !== 0}
+              size="lg"
+              className="min-h-11"
+            >
+              {withdrawing ? t("لحظة…", "Please wait…") : t("تأكيد الانسحاب", "Confirm withdrawal")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWithdrawOpen(false);
+                setWithdrawReason("");
+              }}
+              disabled={withdrawing}
+              size="lg"
+              className="min-h-11"
+            >
+              {t("إلغاء", "Cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* reactivate student */}
+      <Dialog
+        open={reactivateOpen}
+        onOpenChange={(open) => {
+          if (!reactivating) setReactivateOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("إعادة تفعيل الطالب", "Reactivate student")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {t(
+              "رح يرجع الطالب لقائمة الطلاب الفعّالين. دفعاته القديمة بتضل بالسجل بس ما بتدخل بحساب ذمته الجديدة، وحسابه بيبدأ من صفر. سجّله بالمواد من جديد.",
+              "The student will return to the active student list. Old payments remain in the history but won’t count toward the new balance, which starts at zero. Enroll them in courses again.",
+            )}
+          </p>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              onClick={reactivateStudentAction}
+              disabled={reactivating}
+              size="lg"
+              className="min-h-11"
+            >
+              {reactivating
+                ? t("لحظة…", "Please wait…")
+                : t("تأكيد إعادة التفعيل", "Confirm reactivation")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setReactivateOpen(false)}
+              disabled={reactivating}
+              size="lg"
+              className="min-h-11"
+            >
+              {t("إلغاء", "Cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* delete warning */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

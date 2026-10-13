@@ -8,9 +8,10 @@ import {
   useRefresh,
   useStudents,
   useTeachers,
+  useWithdrawnStudents,
 } from "@/hooks/useApp";
 import { usePrefs } from "@/lib/i18n";
-import { money, localDateString } from "@/lib/format";
+import { money, localDateString, shortDate } from "@/lib/format";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FabButton } from "@/components/FabButton";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,7 @@ function StudentsPage() {
   const { add } = Route.useSearch();
   const { data: institute } = useInstitute();
   const { data: students = [], isLoading } = useStudents();
+  const { data: withdrawnStudents = [] } = useWithdrawnStudents();
   const { data: courses = [] } = useCourses();
   const { data: teachers = [] } = useTeachers();
   const refresh = useRefresh();
@@ -100,6 +102,7 @@ function StudentsPage() {
   const [teacherId, setTeacherId] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [showWithdrawn, setShowWithdrawn] = useState(false);
   const [form, setForm] = useState(blank);
   const [pickedCourses, setPickedCourses] = useState<
     { course_id: string; teacher_id: string | null }[]
@@ -368,196 +371,251 @@ function StudentsPage() {
         </button>
       </div>
 
-      {students.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-xl bg-muted/60 px-3 py-2 text-xs font-bold text-muted-foreground">
-            <Users className="size-4 text-primary" />
-            <span className="num">{list.length}</span>
-            {t("طالب", "students")}
-          </span>
-          {activeChips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={chip.clear}
-              className="flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-xs font-bold text-primary"
-            >
-              <chip.icon className="size-3.5" />
-              <span className="max-w-32 truncate">{chip.label}</span>
-              <X className="size-3.5 opacity-70" />
-            </button>
-          ))}
-          {activeCount > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="flex items-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold text-muted-foreground"
-            >
-              <RotateCcw className="size-3.5" />
-              {t("مسح الكل", "Clear all")}
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setShowWithdrawn((v) => !v)}
+          className="inline-flex items-center rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground"
+        >
+          {showWithdrawn
+            ? t("الطلاب الفعّالين", "Active students")
+            : t(
+                `المنسحبين (${withdrawnStudents.length})`,
+                `Withdrawn (${withdrawnStudents.length})`,
+              )}
+        </button>
+      </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t("جاري التحميل…", "Loading…")}</p>
-      ) : students.length === 0 ? (
-        <EmptyState
-          icon={<Users className="size-6" />}
-          title={t("لسا ما أضفت طلاب", "No students yet")}
-          description={t(
-            "لسا ما أضفت طلاب. ابدأ بإضافة أول طالب لمتابعة دفعاته وموادّه بسهولة.",
-            "Add your first student to track their courses and payments.",
-          )}
-          actionLabel={t("أضف طالب", "Add student")}
-          onAction={() => setOpen(true)}
-        />
-      ) : list.length === 0 ? (
-        <p className="rounded-xl bg-card p-6 text-center text-sm text-muted-foreground shadow-soft">
-          {t(
-            "ما في نتائج مطابقة. جرّب تعديل البحث أو الفلاتر.",
-            "No matching results. Try adjusting the search or filters.",
-          )}
-        </p>
-      ) : (
-        <ul className="space-y-3.5">
-          {list.map((s) => {
-            const bal = studentBalance(s);
-            const settled = bal.owed <= 0;
-            const names = (s.student_courses ?? [])
-              .map((sc: { courses: { name: string } | null }) => sc.courses?.name)
-              .filter(Boolean) as string[];
-            const shown = names.slice(0, 3);
-            const extra = names.length - shown.length;
-            return (
-              <li key={s.id}>
+      {showWithdrawn ? (
+        withdrawnStudents.length === 0 ? (
+          <p className="rounded-xl bg-card p-6 text-center text-sm text-muted-foreground shadow-soft">
+            {t("ما في طلاب منسحبين", "No withdrawn students")}
+          </p>
+        ) : (
+          <ul className="space-y-3.5">
+            {withdrawnStudents.map((student) => (
+              <li key={student.id}>
                 <Link
                   to="/students/$id"
-                  params={{ id: s.id }}
-                  className="block overflow-hidden rounded-2xl border border-border bg-card shadow-soft transition-shadow active:shadow-lift"
+                  params={{ id: student.id }}
+                  className="block rounded-2xl border border-border bg-card p-4 shadow-soft"
                 >
-                  <div className="flex items-start justify-between gap-3 bg-primary p-4 text-primary-foreground">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">
-                        {t("بطاقة طالب", "Student card")}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-extrabold text-foreground">
+                        {student.name}
                       </p>
-                      <h2 className="truncate text-lg font-extrabold">
-                        {[s.name, s.surname].filter(Boolean).join(" ")}
-                      </h2>
-                      <p className="flex items-center gap-1.5 truncate text-xs opacity-85">
-                        <User className="size-3.5 shrink-0" />
-                        {s.father_name
-                          ? t(`الأب: ${s.father_name}`, `Father: ${s.father_name}`)
-                          : t("بدون اسم الأب", "No father name")}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
-                      <span className="rounded-lg border border-primary-foreground/25 bg-primary-foreground/15 px-2.5 py-1 text-[10px] font-bold">
-                        {settled ? t("مسدّد", "Settled") : t("عليه مستحقات", "Owes")}
-                      </span>
-                      {[
-                        stageLabel(s.stage, t),
-                        gradeLabel(s.stage, s.grade, t),
-                        branchLabel(s.branch, t),
-                      ]
-                        .filter(Boolean)
-                        .map((label) => (
-                          <span
-                            key={label as string}
-                            className="rounded-lg bg-primary-foreground/10 px-2.5 py-1 text-[10px] font-semibold opacity-90"
-                          >
-                            {label}
-                          </span>
-                        ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 p-4">
-                    <div>
-                      <p className="mb-2 text-[10px] font-bold text-muted-foreground">
-                        {t("المواد المسجلة", "Enrolled courses")}
-                      </p>
-                      {shown.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          {t("ما في مواد مسجلة بعد", "No courses yet")}
+                      {student.phone && (
+                        <p dir="ltr" className="num mt-1 text-xs text-muted-foreground">
+                          {student.phone}
                         </p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {shown.map((n) => (
-                            <span
-                              key={n}
-                              className="rounded-full border border-accent bg-accent px-3 py-1 text-[11px] font-semibold text-accent-foreground"
-                            >
-                              {n}
-                            </span>
-                          ))}
-                          {extra > 0 && (
-                            <span className="rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
-                              {t(`+${extra} إضافي`, `+${extra} more`)}
-                            </span>
-                          )}
-                        </div>
                       )}
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl border border-border bg-muted/50 p-3">
-                        <p className="mb-1 text-[10px] font-bold text-muted-foreground">
-                          {t("المدفوع", "Paid")}
-                        </p>
-                        <p className="num text-lg font-extrabold text-success">{money(bal.paid)}</p>
-                      </div>
-                      <div
-                        className={`rounded-xl border p-3 ${
-                          settled
-                            ? "border-border bg-muted/50"
-                            : "border-destructive/20 bg-destructive/10"
-                        }`}
-                      >
-                        <p className="mb-1 text-[10px] font-bold text-muted-foreground">
-                          {t("المستحق", "Owed")}
-                        </p>
-                        <p
-                          className={`num text-lg font-extrabold ${
-                            settled ? "text-muted-foreground" : "text-destructive"
-                          }`}
-                        >
-                          {money(Math.max(bal.owed, 0))}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div
-                      className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${
-                        settled
-                          ? "border-success/20 bg-success/10"
-                          : "border-warning/25 bg-warning/10"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2 text-xs font-bold">
-                        {settled ? (
-                          <CheckCircle2 className="size-4 text-success" />
-                        ) : (
-                          <AlertCircle className="size-4 text-warning" />
-                        )}
-                        <span className={settled ? "text-success" : "text-warning-foreground"}>
-                          {settled
-                            ? t("حالة الدفع: مسدّد بالكامل", "Payment: fully settled")
-                            : t("حالة الدفع: بانتظار السداد", "Payment: pending")}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-primary">
-                        {t("التفاصيل", "Details")}
-                        <ChevronLeft className="size-3.5 icon-flip" />
-                      </span>
-                    </div>
+                    <span className="rounded-lg bg-muted px-2 py-1 text-[11px] font-bold text-muted-foreground">
+                      {t("منسحب من", "Withdrawn since")} {shortDate(student.withdrawn_at ?? "")}
+                    </span>
                   </div>
                 </Link>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )
+      ) : (
+        <>
+          {students.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-1.5 rounded-xl bg-muted/60 px-3 py-2 text-xs font-bold text-muted-foreground">
+                <Users className="size-4 text-primary" />
+                <span className="num">{list.length}</span>
+                {t("طالب", "students")}
+              </span>
+              {activeChips.map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={chip.clear}
+                  className="flex items-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-xs font-bold text-primary"
+                >
+                  <chip.icon className="size-3.5" />
+                  <span className="max-w-32 truncate">{chip.label}</span>
+                  <X className="size-3.5 opacity-70" />
+                </button>
+              ))}
+              {activeCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex items-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold text-muted-foreground"
+                >
+                  <RotateCcw className="size-3.5" />
+                  {t("مسح الكل", "Clear all")}
+                </button>
+              )}
+            </div>
+          )}
+
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">{t("جاري التحميل…", "Loading…")}</p>
+          ) : students.length === 0 ? (
+            <EmptyState
+              icon={<Users className="size-6" />}
+              title={t("لسا ما أضفت طلاب", "No students yet")}
+              description={t(
+                "لسا ما أضفت طلاب. ابدأ بإضافة أول طالب لمتابعة دفعاته وموادّه بسهولة.",
+                "Add your first student to track their courses and payments.",
+              )}
+              actionLabel={t("أضف طالب", "Add student")}
+              onAction={() => setOpen(true)}
+            />
+          ) : list.length === 0 ? (
+            <p className="rounded-xl bg-card p-6 text-center text-sm text-muted-foreground shadow-soft">
+              {t(
+                "ما في نتائج مطابقة. جرّب تعديل البحث أو الفلاتر.",
+                "No matching results. Try adjusting the search or filters.",
+              )}
+            </p>
+          ) : (
+            <ul className="space-y-3.5">
+              {list.map((s) => {
+                const bal = studentBalance(s);
+                const settled = bal.owed <= 0;
+                const names = (s.student_courses ?? [])
+                  .map((sc: { courses: { name: string } | null }) => sc.courses?.name)
+                  .filter(Boolean) as string[];
+                const shown = names.slice(0, 3);
+                const extra = names.length - shown.length;
+                return (
+                  <li key={s.id}>
+                    <Link
+                      to="/students/$id"
+                      params={{ id: s.id }}
+                      className="block overflow-hidden rounded-2xl border border-border bg-card shadow-soft transition-shadow active:shadow-lift"
+                    >
+                      <div className="flex items-start justify-between gap-3 bg-primary p-4 text-primary-foreground">
+                        <div className="min-w-0 space-y-0.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                            {t("بطاقة طالب", "Student card")}
+                          </p>
+                          <h2 className="truncate text-lg font-extrabold">
+                            {[s.name, s.surname].filter(Boolean).join(" ")}
+                          </h2>
+                          <p className="flex items-center gap-1.5 truncate text-xs opacity-85">
+                            <User className="size-3.5 shrink-0" />
+                            {s.father_name
+                              ? t(`الأب: ${s.father_name}`, `Father: ${s.father_name}`)
+                              : t("بدون اسم الأب", "No father name")}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <span className="rounded-lg border border-primary-foreground/25 bg-primary-foreground/15 px-2.5 py-1 text-[10px] font-bold">
+                            {settled ? t("مسدّد", "Settled") : t("عليه مستحقات", "Owes")}
+                          </span>
+                          {[
+                            stageLabel(s.stage, t),
+                            gradeLabel(s.stage, s.grade, t),
+                            branchLabel(s.branch, t),
+                          ]
+                            .filter(Boolean)
+                            .map((label) => (
+                              <span
+                                key={label as string}
+                                className="rounded-lg bg-primary-foreground/10 px-2.5 py-1 text-[10px] font-semibold opacity-90"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 p-4">
+                        <div>
+                          <p className="mb-2 text-[10px] font-bold text-muted-foreground">
+                            {t("المواد المسجلة", "Enrolled courses")}
+                          </p>
+                          {shown.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              {t("ما في مواد مسجلة بعد", "No courses yet")}
+                            </p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {shown.map((n) => (
+                                <span
+                                  key={n}
+                                  className="rounded-full border border-accent bg-accent px-3 py-1 text-[11px] font-semibold text-accent-foreground"
+                                >
+                                  {n}
+                                </span>
+                              ))}
+                              {extra > 0 && (
+                                <span className="rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                                  {t(`+${extra} إضافي`, `+${extra} more`)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-xl border border-border bg-muted/50 p-3">
+                            <p className="mb-1 text-[10px] font-bold text-muted-foreground">
+                              {t("المدفوع", "Paid")}
+                            </p>
+                            <p className="num text-lg font-extrabold text-success">
+                              {money(bal.paid)}
+                            </p>
+                          </div>
+                          <div
+                            className={`rounded-xl border p-3 ${
+                              settled
+                                ? "border-border bg-muted/50"
+                                : "border-destructive/20 bg-destructive/10"
+                            }`}
+                          >
+                            <p className="mb-1 text-[10px] font-bold text-muted-foreground">
+                              {t("المستحق", "Owed")}
+                            </p>
+                            <p
+                              className={`num text-lg font-extrabold ${
+                                settled ? "text-muted-foreground" : "text-destructive"
+                              }`}
+                            >
+                              {money(Math.max(bal.owed, 0))}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${
+                            settled
+                              ? "border-success/20 bg-success/10"
+                              : "border-warning/25 bg-warning/10"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 text-xs font-bold">
+                            {settled ? (
+                              <CheckCircle2 className="size-4 text-success" />
+                            ) : (
+                              <AlertCircle className="size-4 text-warning" />
+                            )}
+                            <span className={settled ? "text-success" : "text-warning-foreground"}>
+                              {settled
+                                ? t("حالة الدفع: مسدّد بالكامل", "Payment: fully settled")
+                                : t("حالة الدفع: بانتظار السداد", "Payment: pending")}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                            {t("التفاصيل", "Details")}
+                            <ChevronLeft className="size-3.5 icon-flip" />
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
 
       {students.length > 0 && (

@@ -121,16 +121,23 @@ export async function exportMonthlyExcel(
       t("الحالة", "Status"),
     ],
     [16, 28, 20, 16, 36, 16],
-    report.studentPayments.map((row) => [
-      excelDate(row.date),
-      plainText(row.students?.name),
-      lang === "ar"
-        ? (METHOD_LABELS[row.method]?.ar ?? plainText(row.method))
-        : (METHOD_LABELS[row.method]?.en ?? plainText(row.method)),
-      Number(row.amount),
-      plainText(row.note),
-      row.status === "cancelled" ? t("ملغاة", "Cancelled") : t("فعّالة", "Active"),
-    ]),
+    report.studentPayments.map((row) => {
+      const name = plainText(row.students?.name);
+      const rowName =
+        row.students?.status === "withdrawn"
+          ? `${name}${t(" (منسحب)", " (Withdrawn)")}`
+          : name;
+      return [
+        excelDate(row.date),
+        rowName,
+        lang === "ar"
+          ? (METHOD_LABELS[row.method]?.ar ?? plainText(row.method))
+          : (METHOD_LABELS[row.method]?.en ?? plainText(row.method)),
+        Number(row.amount),
+        plainText(row.note),
+        row.status === "cancelled" ? t("ملغاة", "Cancelled") : t("فعّالة", "Active"),
+      ];
+    }),
     report.totals.income,
     4,
   );

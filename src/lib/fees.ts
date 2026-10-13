@@ -49,3 +49,11 @@ export function courseTeachers(course: PricedCourse | null | undefined): CourseT
 export function isActivePayment(p: { status?: string | null }): boolean {
   return (p.status ?? "active") !== "cancelled";
 }
+
+/** A payment belongs to the current period when there is no cutoff or it is on/after it. */
+export function isInCurrentPeriod(
+  p: { date?: string | null },
+  periodStart?: string | null,
+): boolean {
+  return !periodStart || (p.date != null && p.date >= periodStart);
+}

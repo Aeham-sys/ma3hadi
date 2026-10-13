@@ -170,15 +170,22 @@ export function MonthlyReportPrint({
             </tr>
           </thead>
           <tbody>
-            {activeStudents.map((row) => (
-              <tr key={row.id}>
-                <td>{shortDate(row.date)}</td>
-                <td>{row.students?.name ?? ""}</td>
-                <td>{methodLabel(row.method)}</td>
-                <td>{amount(Number(row.amount))}</td>
-                <td>{row.note ?? ""}</td>
-              </tr>
-            ))}
+            {activeStudents.map((row) => {
+              const name = row.students?.name ?? "";
+              const displayName =
+                row.students?.status === "withdrawn"
+                  ? `${name}${t(" (منسحب)", " (Withdrawn)")}`
+                  : name;
+              return (
+                <tr key={row.id}>
+                  <td>{shortDate(row.date)}</td>
+                  <td>{displayName}</td>
+                  <td>{methodLabel(row.method)}</td>
+                  <td>{amount(Number(row.amount))}</td>
+                  <td>{row.note ?? ""}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>

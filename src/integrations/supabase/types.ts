@@ -376,13 +376,17 @@ export type Database = {
           father_name: string | null
           grade: string | null
           guardian_phone: string | null
+          history: Json
           id: string
           institute_id: string
           mother_name: string | null
           name: string
+          period_start: string | null
           phone: string | null
           stage: string | null
+          status: string
           surname: string | null
+          withdrawn_at: string | null
         }
         Insert: {
           branch?: string | null
@@ -391,13 +395,17 @@ export type Database = {
           father_name?: string | null
           grade?: string | null
           guardian_phone?: string | null
+          history?: Json
           id?: string
           institute_id: string
           mother_name?: string | null
           name: string
+          period_start?: string | null
           phone?: string | null
           stage?: string | null
+          status?: string
           surname?: string | null
+          withdrawn_at?: string | null
         }
         Update: {
           branch?: string | null
@@ -406,13 +414,17 @@ export type Database = {
           father_name?: string | null
           grade?: string | null
           guardian_phone?: string | null
+          history?: Json
           id?: string
           institute_id?: string
           mother_name?: string | null
           name?: string
+          period_start?: string | null
           phone?: string | null
           stage?: string | null
+          status?: string
           surname?: string | null
+          withdrawn_at?: string | null
         }
         Relationships: [
           {
@@ -621,7 +633,55 @@ export type Database = {
       plan_months: { Args: { _plan: string }; Returns: number }
       plan_price: { Args: { _plan: string }; Returns: number }
       reject_receipt: { Args: { p_receipt_id: string }; Returns: string }
+      reactivate_student: {
+        Args: { p_start?: string; p_student_id: string }
+        Returns: {
+          branch: string | null
+          created_at: string
+          enrollment_date: string
+          father_name: string | null
+          grade: string | null
+          guardian_phone: string | null
+          history: Json
+          id: string
+          institute_id: string
+          mother_name: string | null
+          name: string
+          period_start: string | null
+          phone: string | null
+          stage: string | null
+          status: string
+          surname: string | null
+          withdrawn_at: string | null
+        }
+      }
+      student_balance: {
+        Args: { p_student_id: string }
+        Returns: { due: number; owed: number; paid: number }[]
+      }
       subscription_allowed: { Args: never; Returns: boolean }
+      withdraw_student: {
+        Args: { p_reason?: string; p_student_id: string; p_today?: string }
+        Returns: {
+          branch: string | null
+          created_at: string
+          enrollment_date: string
+          father_name: string | null
+          grade: string | null
+          guardian_phone: string | null
+          history: Json
+          id: string
+          institute_id: string
+          mother_name: string | null
+          name: string
+          period_start: string | null
+          phone: string | null
+          stage: string | null
+          status: string
+          surname: string | null
+          withdrawn_at: string | null
+        }
+      }
     }
     Enums: {
       app_role: "admin" | "user"

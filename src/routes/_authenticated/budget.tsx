@@ -592,8 +592,9 @@ function BudgetMonthView({
         const response = await supabase
           .from("students")
           .select(
-            "id, student_courses(id, custom_fee, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price))), payments(id,amount,status)",
+            "id, period_start, student_courses(id, custom_fee, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price))), payments(id,amount,date,status)",
           )
+          .eq("status", "active")
           .order("id", { ascending: true })
           .range(from, to);
         return { data: response.data, error: response.error };

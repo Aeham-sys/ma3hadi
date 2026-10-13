@@ -9,7 +9,7 @@ export type StudentPaymentReportRow = {
   method: string;
   note: string | null;
   status: string;
-  students: { name: string } | null;
+  students: { name: string; status: string } | null;
 };
 
 export type TeacherPaymentReportRow = {
@@ -108,7 +108,7 @@ export async function fetchMonthlyReport(year: number, month: number): Promise<M
     fetchAllPages(async (from, to) => {
       const { data, error } = await supabase
         .from("payments")
-        .select("id, amount, date, method, note, status, students(name)")
+        .select("id, amount, date, method, note, status, students(name, status)")
         .gte("date", startDate)
         .lt("date", endDate)
         .order("date", { ascending: true })

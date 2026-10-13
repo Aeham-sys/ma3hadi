@@ -1,7 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Institute } from "@/lib/subscription";
-import { enrollmentFee, isActivePayment, type EnrollmentRow } from "@/lib/fees";
+import {
+  enrollmentFee,
+  isActivePayment,
+  isInCurrentPeriod,
+  type EnrollmentRow,
+} from "@/lib/fees";
 
 export function useInstitute() {
   return useQuery({
@@ -58,9 +63,25 @@ export function useStudents() {
       const { data, error } = await supabase
         .from("students")
         .select(
-          "*, student_courses(id, custom_fee, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price))), payments(id,amount,status)",
+          "*, student_courses(id, custom_fee, teacher_id, courses(id,name,price, teacher_courses(teacher_id, price))), payments(id,amount,date,status)",
         )
+        .eq("status", "active")
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useWithdrawnStudents() {
+  return useQuery({
+    queryKey: ["students", "withdrawn"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, name, phone, withdrawn_at, history")
+        .eq("status", "withdrawn")
+        .order("withdrawn_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -101,11 +122,12 @@ export function useSections() {
 /** total owed for a student row shaped by useStudents() */
 export function studentBalance(s: {
   student_courses?: EnrollmentRow[] | null;
-  payments?: { amount: number; status?: string | null }[] | null;
+  payments?: { amount: number; date?: string | null; status?: string | null }[] | null;
+  period_start?: string | null;
 }) {
   const due = (s.student_courses ?? []).reduce((sum, sc) => sum + enrollmentFee(sc), 0);
   const paid = (s.payments ?? [])
-    .filter(isActivePayment)
+    .filter((p) => isActivePayment(p) && isInCurrentPeriod(p, s.period_start))
     .reduce((sum, p) => sum + Number(p.amount), 0);
   return { due, paid, owed: due - paid };
 }
